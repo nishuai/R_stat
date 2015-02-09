@@ -1,0 +1,43 @@
+### this script turns pair-wise distance list into a
+### distance matrix as the standard input for hclust() function in R
+### 15/2/2015
+
+### read pair-wise distance list and initiate the distaice matrix
+matrix=read.table('distances_pfms.distance',header=F)
+pfm_names=unique(c(as.character(matrix[,2]),as.character(matrix[,1])))
+distance_matrix=matrix(NA,length(pfm_names),length(pfm_names))
+colnames(distance_matrix)=pfm_names
+rownames(distance_matrix)=pfm_names
+
+### fill the matrix to form a "dist" object
+
+for (i in 1:length(matrix[,1])) {
+  index_1=which(colnames(distance_matrix)==matrix[i,1]);
+  index_2=which(rownames(distance_matrix)==matrix[i,2]);
+  
+  ### index is both the index of row and col for any given 
+  ### object. The order of row names is the same of col names.
+  distance_matrix[index_1,index_2]=matrix[i,3];
+  distance_matrix[index_2,index_1]=matrix[i,3];}
+
+for (i in 1:length(distance_matrix[1,])) {
+  distance_matrix[i,i]=0
+}
+distance_matrix=distance_matrix*10
+dist=as.dist(distance_matrix)
+
+
+###　plooting with hierachical clustering
+##########
+###hirechical phylogenetic clustering
+##########
+fit1 <- hclust(dist, method="ward.D2") 
+library(ape)
+plot(as.phylo(fit),type='fan')
+plot(fit,hang = -1)
+
+##########
+###k means clustering
+##########
+fit3=kmeans(distance_matrix,5)
+print (fit3)
