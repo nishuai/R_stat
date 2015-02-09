@@ -1,6 +1,7 @@
 ### this script turns pair-wise distance list into a
 ### distance matrix as the standard input for hclust() function in R
 ### 15/2/2015
+library(ape)
 
 ### read pair-wise distance list and initiate the distaice matrix
 matrix=read.table('distances_pfms.distance',header=F)
@@ -8,13 +9,10 @@ pfm_names=unique(c(as.character(matrix[,2]),as.character(matrix[,1])))
 distance_matrix=matrix(NA,length(pfm_names),length(pfm_names))
 colnames(distance_matrix)=pfm_names
 rownames(distance_matrix)=pfm_names
-
 ### fill the matrix to form a "dist" object
-
 for (i in 1:length(matrix[,1])) {
   index_1=which(colnames(distance_matrix)==matrix[i,1]);
   index_2=which(rownames(distance_matrix)==matrix[i,2]);
-  
   ### index is both the index of row and col for any given 
   ### object. The order of row names is the same of col names.
   distance_matrix[index_1,index_2]=matrix[i,3];
@@ -29,15 +27,25 @@ dist=as.dist(distance_matrix)
 
 ###　plooting with hierachical clustering
 ##########
-###hirechical phylogenetic clustering
+### K means clustering
 ##########
-fit1 <- hclust(dist, method="ward.D2") 
-library(ape)
-plot(as.phylo(fit),type='fan')
-plot(fit,hang = -1)
+fit1=kmeans(distance_matrix,5)
+fit2=kmeans(distance_matrix,4)
+##########
+### Hirechical phylogenetic clustering
+##########
+labelColors = c("#556270","#4ECDC4", "#036564", "#EB6841", "#EDC951")
+hc <- hclust(dist, method="ward.D2") 
+hcd=as.dendrogram(hc)
 
-##########
-###k means clustering
-##########
-fit3=kmeans(distance_matrix,5)
-print (fit3)
+### intergrating k means results with hierarchical clustering 
+
+## 5 clusters
+plot(as.phylo(hc),type='fan',tip.color=labelColors[fit1$cluster])
+plot(as.phylo(hc), cex = 0.7, tip.color=labelColors[fit1$cluster],label.offset = 1)
+plot(as.phylo(hc), type = "unrooted",tip.color=labelColors[fit1$cluster])
+## 4 clusters
+plot(as.phylo(hc),type='fan',tip.color=labelColors[fit2$cluster])
+plot(as.phylo(hc), cex = 0.7, tip.color=labelColors[fit2$cluster],label.offset = 1)
+plot(as.phylo(hc), type = "unrooted",tip.color=labelColors[fit2$cluster])
+
