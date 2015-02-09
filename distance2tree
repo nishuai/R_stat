@@ -1,5 +1,6 @@
 ### this script turns pair-wise distance list into a
 ### distance matrix as the standard input for hclust() function in R
+### and classify with K means and hierarchical clustering, compare the results
 ### 15/2/2015
 library(ape)
 
