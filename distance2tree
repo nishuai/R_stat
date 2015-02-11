@@ -1,11 +1,10 @@
 ### this script turns pair-wise distance list into a
 ### distance matrix as the standard input for hclust() function in R
-### and classify with K means and hierarchical clustering, compare the results
 ### 15/2/2015
 library(ape)
 
 ### read pair-wise distance list and initiate the distaice matrix
-matrix=read.table('distances_pfms.distance',header=F)
+matrix=read.table('new_noweight.distance',header=F)
 pfm_names=unique(c(as.character(matrix[,2]),as.character(matrix[,1])))
 distance_matrix=matrix(NA,length(pfm_names),length(pfm_names))
 colnames(distance_matrix)=pfm_names
@@ -30,23 +29,72 @@ dist=as.dist(distance_matrix)
 ##########
 ### K means clustering
 ##########
-fit1=kmeans(distance_matrix,5)
-fit2=kmeans(distance_matrix,4)
+fit=kmeans(distance_matrix,5)
+
 ##########
-### Hirechical phylogenetic clustering
+### Hirechical phylogenetic clustering Dendrogram
 ##########
-labelColors = c("#556270","#4ECDC4", "#036564", "#EB6841", "#EDC951")
-hc <- hclust(dist, method="ward.D2") 
+hc <- hclust(dist, method="ward.D") 
 hcd=as.dendrogram(hc)
+clusMember = cutree(hc, 5)
+labelColors = c("#556270","#4ECDC4", "#036564", "#EB6841", "#EDC951")
 
-### intergrating k means results with hierarchical clustering 
+colLab <- function(n) {
+  if (is.leaf(n)) {
+    a <- attributes(n)
+    labCol <- labelColors[clusMember[which(names(clusMember) == a$label)]]
+    attr(n, "nodePar") <- c(a$nodePar, lab.col = labCol)
+  }
+  n
+}
+clusDendro = dendrapply(hcd, colLab)
+plot(clusDendro, main = "Dendrogram")
+axis(side = 2, at = seq(0, 10,2), col = "#F38630", labels = FALSE, lwd = 2)
 
-## 5 clusters
-plot(as.phylo(hc),type='fan',tip.color=labelColors[fit1$cluster])
-plot(as.phylo(hc), cex = 0.7, tip.color=labelColors[fit1$cluster],label.offset = 1)
-plot(as.phylo(hc), type = "unrooted",tip.color=labelColors[fit1$cluster])
-## 4 clusters
-plot(as.phylo(hc),type='fan',tip.color=labelColors[fit2$cluster])
-plot(as.phylo(hc), cex = 0.7, tip.color=labelColors[fit2$cluster],label.offset = 1)
-plot(as.phylo(hc), type = "unrooted",tip.color=labelColors[fit2$cluster])
+#####################################################
+### plot in 2 different ways, color of the object showing the results of Kmeans clustering
+#####################################################
+plot(as.phylo(hc),col.lab = "#7C8071",  type='fan',tip.color=labelColors[fit$cluster])
+plot(as.phylo(hc), cex = 0.6, tip.color=labelColors[fit$cluster],label.offset = 0.1)
+axis(side = 1, at = seq(0, 5,0.5), col = "#F38630", labels = FALSE, lwd = 2)
+mtext(rev(seq(0,1,0.1)), side = 1, at = seq(0, 5,0.5), line = 1,  col = "#A38630", las = 2)
 
+####################################################
+## find the representative matrix of each classified group using Kmeans clustering
+####################################################
+
+##defining number of clusters
+
+fit=kmeans(distance_matrix,5)
+wss <- (nrow(distance_matrix)-1)*sum(apply(distance_matrix,2,var))
+for (i in 2:15) wss[i] <- sum(kmeans(distance_matrix, centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+     ylab="Within groups sum of squares")
+
+classify=as.data.frame(fit$cluster)
+num_prototype=length(unique(classify[,]))
+
+compute_prototype=function(filename_lists){
+  example=read.table(filename_lists[1])
+  prototype=matrix(0,dim(example)[1],dim(example)[2])
+  for (i in 1:length(filename_lists)){
+    prototype=prototype+read.table(filename_lists[i])
+  }
+  prototype=prototype/length(filename_lists)
+  return (prototype)
+}
+
+###　compute prototypes for each class of matrices and write to file
+###  write another single file containing classification results
+dir.create(file.path(getwd(),'prototypes'), showWarnings = FALSE)
+for (i in 1:num_prototype){
+  prototype=compute_prototype(rownames(classify)[classify==i])
+  write.table(prototype,file=paste(file.path(getwd(),'prototypes','type'),i,sep=''),sep='\t')
+  content=paste(rownames(classify)[classify==i])
+  title=paste('the ', i ,' th prototype contains')
+  write(title,file='readme',append=T)
+  write(content,file='readme',sep='' , append=T)
+}
+rownames(classify)[classify==2]
+matrix=read.table('hEHF.pfm')
+matrix2=read.table('hERF.pfm')
