@@ -4,7 +4,7 @@
 library(ape)
 
 ### read pair-wise distance list and initiate the distaice matrix
-matrix=read.table('new_noweight.distance',header=F)
+matrix=read.table('new.distance',header=F)
 pfm_names=unique(c(as.character(matrix[,2]),as.character(matrix[,1])))
 distance_matrix=matrix(NA,length(pfm_names),length(pfm_names))
 colnames(distance_matrix)=pfm_names
@@ -21,7 +21,12 @@ for (i in 1:length(matrix[,1])) {
 for (i in 1:length(distance_matrix[1,])) {
   distance_matrix[i,i]=0
 }
-distance_matrix=distance_matrix*10
+###### refine rownames and colnames for distance_matrix
+strings=rownames(distance_matrix)
+for (i in 1:54){strings[i]=substr(rownames(distance_matrix)[i],1,nchar(rownames(distance_matrix)[i])-4)}
+rownames(distance_matrix)=strings
+colnames(distance_matrix)=strings
+#### creat dist object
 dist=as.dist(distance_matrix)
 
 
@@ -29,15 +34,15 @@ dist=as.dist(distance_matrix)
 ##########
 ### K means clustering
 ##########
-fit=kmeans(distance_matrix,5)
+fit=kmeans(distance_matrix,3)
 
 ##########
 ### Hirechical phylogenetic clustering Dendrogram
 ##########
-hc <- hclust(dist, method="ward.D") 
+hc <- hclust(dist, method="average") 
 hcd=as.dendrogram(hc)
 clusMember = cutree(hc, 5)
-labelColors = c("#556270","#4ECDC4", "#036564", "#EB6841", "#EDC951")
+labelColors = c( "#75ed51"，"purple"，"#51c3ed", "#036564" ,"#556270")
 
 colLab <- function(n) {
   if (is.leaf(n)) {
@@ -55,6 +60,7 @@ axis(side = 2, at = seq(0, 10,2), col = "#F38630", labels = FALSE, lwd = 2)
 ### plot in 2 different ways, color of the object showing the results of Kmeans clustering
 #####################################################
 plot(as.phylo(hc),col.lab = "#7C8071",  type='fan',tip.color=labelColors[fit$cluster])
+
 plot(as.phylo(hc), cex = 0.6, tip.color=labelColors[fit$cluster],label.offset = 0.1)
 axis(side = 1, at = seq(0, 5,0.5), col = "#F38630", labels = FALSE, lwd = 2)
 mtext(rev(seq(0,1,0.1)), side = 1, at = seq(0, 5,0.5), line = 1,  col = "#A38630", las = 2)
@@ -64,8 +70,8 @@ mtext(rev(seq(0,1,0.1)), side = 1, at = seq(0, 5,0.5), line = 1,  col = "#A38630
 ####################################################
 
 ##defining number of clusters
-
-fit=kmeans(distance_matrix,5)
+set.seed(1)
+fit=kmeans(distance_matrix,3)
 wss <- (nrow(distance_matrix)-1)*sum(apply(distance_matrix,2,var))
 for (i in 2:15) wss[i] <- sum(kmeans(distance_matrix, centers=i)$withinss)
 plot(1:15, wss, type="b", xlab="Number of Clusters",
@@ -86,10 +92,10 @@ compute_prototype=function(filename_lists){
 
 ###　compute prototypes for each class of matrices and write to file
 ###  write another single file containing classification results
-dir.create(file.path(getwd(),'prototypes'), showWarnings = FALSE)
+dir.create(file.path(getwd(),'prototypes2'), showWarnings = FALSE)
 for (i in 1:num_prototype){
   prototype=compute_prototype(rownames(classify)[classify==i])
-  write.table(prototype,file=paste(file.path(getwd(),'prototypes','type'),i,sep=''),sep='\t')
+  write.table(prototype,file=paste(file.path(getwd(),'prototypes2','type'),i,sep=''),sep='\t')
   content=paste(rownames(classify)[classify==i])
   title=paste('the ', i ,' th prototype contains')
   write(title,file='readme',append=T)
@@ -98,3 +104,30 @@ for (i in 1:num_prototype){
 rownames(classify)[classify==2]
 matrix=read.table('hEHF.pfm')
 matrix2=read.table('hERF.pfm')
+
+
+###########################################
+### tree object
+###########################################
+library(ape)
+
+tree2=read.tree('tree4.txt')
+tree2$tip
+color=rep('black',length(tree2$tip))
+for (i in 1:length(tree2$tip)){
+  color[i]=labelColors[as.data.frame(fit$cluster)[tree2$tip[i],]]
+}
+color[is.na(color)]='#556270'
+plot(tree2,type='fan',tip.color=color,cex=1.2)
+plot(tree2,tip.color=color)
+
+#############################
+##clustering with affinity propogation
+#############################
+library(apcluster)
+ap=apcluster(distance_matrix)
+heatmap(ap,distance_matrix,Colv=FALSE)
+ap=apcluster(distance_matrix,details=T)
+plot(ap)
+agg=aggExCluster(distance_matrix)
+plot(agg)
