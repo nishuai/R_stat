@@ -1,0 +1,36 @@
+library(gplots)
+library(RColorBrewer)
+library(seqinr)
+###reading files 
+genes=read.table('MSKCC_PCa_mRNA_data.xls',header=T,stringsAsFactors=FALSE)
+##change NA to some arbitrary characters to avoid errors
+genes[,2][which(is.na(genes[,2]))]='IS_NA2254'
+###pcan and pca are two groups of cells, pca normal, pcan metastasis
+pcan_index=grepl('^PAN',colnames(genes))
+pcan=genes[,pcan_index]
+rownames(pcan)=genes[,2]
+##
+pca=genes[,3:133]
+rownames(pca)=genes[,2]
+### above only need to be done once
+
+
+
+#####gene lists for pathway analysis
+enriched_list=read.table('tcga487_enriched_geles.txt',strip.white=TRUE, sep='\t')
+colnames(enriched_list)=c('go_index','if_pos','number_enriched','value','p_value','list')
+enriched_list$if_pos=c('pos','neg')[-enriched_list$if_pos+2]
+#### heatmaps
+for (i in 1:dim(enriched_list)[1]){
+list_nu=i
+gene_list=strsplit(as.character(enriched_list$list)[list_nu],', ')
+gene_list=unlist(gene_list)
+map=cbind(pca[ rownames(pca) %in% gene_list,],pcan[rownames(pcan) %in% gene_list,])
+pdf(paste(enriched_list$go_index[list_nu],'.pdf',sep=''),15,15)
+print (i); print (paste('GO_',gsub("[^0-9]", '',enriched_list$go_index[list_nu]),enriched_list$if_pos[list_nu],'.pdf',sep=''))
+heatmap.2(as.matrix(map),trace='none', main=enriched_list$go_index[list_nu])
+dev.off()
+}
+# creates a own color palette from red to green
+my_palette <- colorRampPalette(c("red", "yellow", "green"))(n = 299)
+
