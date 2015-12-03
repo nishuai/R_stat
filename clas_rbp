@@ -1,0 +1,245 @@
+library(mRNAinteractomeMMprimary)
+library(limma)
+library(geneplotter)
+library(ggplot2)
+library(reshape2)
+data('enigmRBP',package='mRNAinteractomeMMprimary')
+
+## read data from file
+
+A549peptides=read.table('A549 peptides.txt',sep='\t',header=T,stringsAsFactors=F)
+subt1peptides=read.table('subt1 peptides.txt',sep='\t',header=T,stringsAsFactors=F)
+A549proteingroups=read.table('A549 proteinGroups.txt',sep='\t',header=T,stringsAsFactor=F)
+subt1proteingroups=read.table('subt1 proteinGroups.txt',sep='\t',header=T,stringsAsFactor=F)
+
+###subt1 analysis
+
+I=subt1proteingroups$Potential.contaminant=='' & subt1proteingroups$Reverse==''
+subt1_intensity=subt1proteingroups[I,
+                                   c("Intensity","Intensity.L","Intensity.H","Intensity.A",
+                                      "Intensity.L.A","Intensity.H.A","Intensity.B",
+                                      "Intensity.L.B","Intensity.H.B","Intensity.C",
+                                      "Intensity.L.C","Intensity.H.C")]
+subt1_intensity=as.data.frame(subt1_intensity)
+colnames(subt1_intensity)=c('rep0','rep0l','rep0h','repa','repal','repah','repb','repbl','repbh','repc','repcl','repch')
+
+
+subt1_intensity[subt1_intensity==0]=NA
+
+subt1_intensity = log2(subt1_intensity)
+####compare the number of proteins with intensity value in each of the experiment(ABC)
+sample_pcounts=t(apply(subt1_intensity[c(5,6,8,9,11,12)],2,function(x) table(is.na(x))))
+replicates=rownames(sample_pcounts,2)
+sample_pcounts=as.data.frame(as.vector(sample_pcounts))
+sample_pcounts=cbind(sample_pcounts,replicates,rep(c('No','Yes'),
+                      each=length(replicates)))
+
+colnames(sample_pcounts)=c('count','replicates','IsNA')
+sample_pcounts$IsNA=factor(sample_pcounts$IsNA,levels=c('Yes','No'))
+sample_pcounts$replicates = factor(sample_pcounts$replicates, levels = c('repal','repah','repbl','repbh','repcl','repch'))
+
+pdf('protein_abundance_replicates_subt1.pdf')
+cp_protein_abundency=ggplot(data=sample_pcounts,aes(x=replicates,y=count,fill=IsNA))
+cp_protein_abundency+geom_bar(stat='identity',position='stack')+ xlab("Replicates") + ylab("Total counts") +
+  ggtitle("Protein counts in each replicte in subt1")
+dev.off()
+
+
+###
+subt1_protein_ids=as.vector(sapply(strsplit(subt1proteingroups$Majority.protein.IDs[I],';'),function(x) x[1]))
+subt1_gene_names=as.vector(sapply(strsplit(subt1proteingroups$Gene.names[I],';'),function(x) x[1]))
+subt1_intensity$protein_ids=subt1_protein_ids
+subt1_intensity$gene_names=subt1_gene_names
+
+### RBP classification with moderated t-test
+
+fit = list()
+fit$subt1 = eBayes(lmFit(subt1_intensity[,c("repah","repbh",'repch')]-subt1_intensity[,c("repal","repbl",'repcl')]))
+fit$subt1$p.adj = p.adjust(fit$subt1$p.value,method="BH")
+
+col = ifelse(fit$subt1$p.adj <= 0.1, "orange", "gray")
+col[which(fit$subt1$p.adj <= 0.01)] = "red"
+col[which(fit$subt1$p.adj <= 0.1 & fit$subt1$coefficients < 0)] = "cyan"
+col[which(fit$subt1$p.adj <= 0.01 & fit$subt1$coefficients < 0)] = "blue"
+
+pdf('replicates_subt1_interactome.pdf')
+plot(subt1_intensity[,c("repah","repbh",'repch')]-subt1_intensity[,c("repal","repbl",'repcl')],
+     col=col, pch=20,
+main="subt1 mRNA interactome capture")
+dev.off()
+###check known RBPs stored in enigmRBP 
+
+
+subt1_intensity=cbind(subt1_intensity,t(sapply(subt1_intensity$gene_names, function(x) enigmRBP[which(x == enigmRBP$ENSEMBL.Gene.Name),])))
+subt1_intensity=cbind(subt1_intensity, subt1_quant=ifelse(fit$subt1$p.adj<0.05, 'interactome','not qualified'))
+subt1_manual=apply(subt1_intensity,1,function(x) sum(!is.na(x[c('repal','repbl','repcl')])))==0 & 
+  apply(subt1_intensity,1,function(x) sum(!is.na(x[c('repah','repbh','repch')])))>=2
+subt1_intensity=cbind(subt1_intensity,subt1_manual=ifelse(subt1_manual,'interactome','not qualified'))
+
+subt1_total=ifelse(subt1_intensity$subt1_manual=='interactome' | subt1_intensity$subt1_quant=='interactome','interactome', 'not qualified')
+subt1_total[is.na(subt1_total)]='not qualified'
+subt1_intensity=cbind(subt1_intensity,subt1_total)
+
+###
+known_interactome=apply(subt1_intensity[c('HeLa','HEK293','HuH7')],1,function(x) {sum(grepl('interactome',x))})
+quant_known=table(known_interactome[subt1_intensity$subt1_quant=='interactome'])
+manual_known=table(known_interactome[subt1_intensity$subt1_manual=='interactome'])
+none_known=table(known_interactome[subt1_intensity$subt1_total=='not qualified'])
+
+####intersects between 3 sets of identified intreractomes
+  
+pdf('Comparison_subt1_knownRPB.pdf')  
+Intersect=data.frame(method=rep(c('RBP_quantitative','RBP_semi_quantitative','No binding'),each=4),count=c(quant_known,manual_known,none_known),matches_known=rep(c('no match','1 match','2 matches','3 matches'),3))
+Intersect$matches_known=factor(Intersect$matches_known,levels=c('no match','1 match','2 matches','3 matches'))
+Intersect$method=factor(Intersect$method,levels=c('RBP_quantitative','RBP_semi_quantitative','No binding'))
+subt1_overview=ggplot(data=Intersect,aes(x=method,y=count,fill=matches_known))
+subt1_overview+geom_bar(stat='identity',position='dodge')+xlab("Method") + ylab('Total count') +
+    ggtitle("Comparison between known RBPs and identified intreractomes in subt1")
+dev.off()
+
+####Total number of the each set of identified interactomes
+pdf('count_subt1_rbps.pdf')
+sets_count=data.frame(method=factor(c('RBP_quantitative','RBP_semi_quantitative','No binding'),labels=c('RBP_quantitative','RBP_semi_quantitative','No binding')),
+                     count=c(sum(subt1_intensity$subt1_quant=='interactome',na.rm=T),sum(subt1_intensity$subt1_manual=='interactome',na.rm=T),sum(subt1_intensity$subt1_total!='interactome',na.rm=T)))
+subt1_sets_count=ggplot(data=sets_count,aes(x=method,y=count,fill=method))
+subt1_sets_count+geom_bar(colour="black", stat="identity") + guides(fill=FALSE)+ xlab("Method") + ylab("Total counts") +
+  ggtitle("Counts of sets of identified proteins in subt1")
+dev.off()
+
+###Write the set of Gene names of the RBPs to a txt file.
+save_file=subt1_intensity[,c(13:15,21:23)]
+save_file[,4][is.na(save_file[,4])]='not qualified'
+sink('classified_rbps_subt1.txt')
+cat('Gene names of quantitatively identified RBPs in subt1')
+cat('\n'); cat('\n')
+cat(t(save_file[,2][save_file[,4]=='interactome']))
+cat('\n'); cat('\n')
+cat('Gene names of semi-quantitatively identified RBPs in subt1')
+cat('\n'); cat('\n')
+cat(t(save_file[,2][save_file[,5]=='interactome']))
+cat('\n'); cat('\n')
+cat('Gene names of proteins ONLY quantitatively identified in subt1')
+cat('\n'); cat('\n')
+cat(t(subt1_intensity$gene_names[known_interactome==0 & save_file$subt1_quant=='interactome']))
+cat('\n'); cat('\n')
+cat('Gene names of proteins ONLY semi-quantitatively identified in subt1')
+cat('\n'); cat('\n')
+cat(t(subt1_intensity$gene_names[known_interactome==0 & save_file$subt1_manual=='interactome']))
+sink()
+
+###################
+###A549 analysis###
+###################
+
+I=A549proteingroups$Potential.contaminant=='' & A549proteingroups$Reverse==''
+A549_intensity=A549proteingroups[I,
+                                   c("Intensity","Intensity.L","Intensity.H","Intensity.A",
+                                     "Intensity.L.A","Intensity.H.A","Intensity.B",
+                                     "Intensity.L.B","Intensity.H.B","Intensity.C",
+                                     "Intensity.L.C","Intensity.H.C")]
+A549_intensity=as.data.frame(A549_intensity)
+colnames(A549_intensity)=c('rep0','rep0l','rep0h','repa','repal','repah','repb','repbl','repbh','repc','repcl','repch')
+
+
+A549_intensity[A549_intensity==0]=NA
+
+A549_intensity = log2(A549_intensity)
+####compare the number of proteins with intensity value in each of the experiment(ABC)
+sample_pcounts=t(apply(A549_intensity[c(5,6,8,9,11,12)],2,function(x) table(is.na(x))))
+replicates=rownames(sample_pcounts,2)
+sample_pcounts=as.data.frame(as.vector(sample_pcounts))
+sample_pcounts=cbind(sample_pcounts,replicates,rep(c('No','Yes'),
+                                                   each=length(replicates)))
+
+colnames(sample_pcounts)=c('count','replicates','IsNA')
+sample_pcounts$IsNA=factor(sample_pcounts$IsNA,levels=c('Yes','No'))
+sample_pcounts$replicates = factor(sample_pcounts$replicates, levels = c('repal','repah','repbl','repbh','repcl','repch'))
+
+pdf('protein_abundance_replicates_A549.pdf')
+cp_protein_abundency=ggplot(data=sample_pcounts,aes(x=replicates,y=count,fill=IsNA))
+cp_protein_abundency+geom_bar(stat='identity',position='stack')+ xlab("Replicates") + ylab("Total counts") +
+  ggtitle("Protein counts in each replicte in A549")
+dev.off()
+
+
+###
+A549_protein_ids=as.vector(sapply(strsplit(A549proteingroups$Majority.protein.IDs[I],';'),function(x) x[1]))
+A549_gene_names=as.vector(sapply(strsplit(A549proteingroups$Gene.names[I],';'),function(x) x[1]))
+A549_intensity$protein_ids=A549_protein_ids
+A549_intensity$gene_names=A549_gene_names
+
+### RBP classification with moderated t-test
+
+fit = list()
+fit$A549 = eBayes(lmFit(A549_intensity[,c("repah","repbh",'repch')]-A549_intensity[,c("repal","repbl",'repcl')]))
+fit$A549$p.adj = p.adjust(fit$A549$p.value,method="BH")
+
+col = ifelse(fit$A549$p.adj <= 0.1, "orange", "gray")
+col[which(fit$A549$p.adj <= 0.01)] = "red"
+col[which(fit$A549$p.adj <= 0.1 & fit$A549$coefficients < 0)] = "cyan"
+col[which(fit$A549$p.adj <= 0.01 & fit$A549$coefficients < 0)] = "blue"
+
+pdf('replicates_A549_interactome.pdf')
+plot(A549_intensity[,c("repah","repbh",'repch')]-A549_intensity[,c("repal","repbl",'repcl')],
+     col=col, pch=20,
+     main="A549 mRNA interactome capture")
+dev.off()
+###check known RBPs stored in enigmRBP 
+
+
+A549_intensity=cbind(A549_intensity,t(sapply(A549_intensity$gene_names, function(x) enigmRBP[which(x == enigmRBP$ENSEMBL.Gene.Name),])))
+A549_intensity=cbind(A549_intensity, A549_quant=ifelse(fit$A549$p.adj<0.05, 'interactome','not qualified'))
+A549_manual=apply(A549_intensity,1,function(x) sum(!is.na(x[c('repal','repbl','repcl')])))==0 & 
+  apply(A549_intensity,1,function(x) sum(!is.na(x[c('repah','repbh','repch')])))>=2
+A549_intensity=cbind(A549_intensity,A549_manual=ifelse(A549_manual,'interactome','not qualified'))
+
+A549_total=ifelse(A549_intensity$A549_manual=='interactome' | A549_intensity$A549_quant=='interactome','interactome', 'not qualified')
+A549_total[is.na(A549_total)]='not qualified'
+A549_intensity=cbind(A549_intensity,A549_total)
+
+###
+known_interactome=apply(A549_intensity[c('HeLa','HEK293','HuH7')],1,function(x) {sum(grepl('interactome',x))})
+quant_known=table(known_interactome[A549_intensity$A549_quant=='interactome'])
+manual_known=table(known_interactome[A549_intensity$A549_manual=='interactome'])
+none_known=table(known_interactome[A549_intensity$A549_total=='not qualified'])
+
+####intersects between 3 sets of identified intreractomes
+
+pdf('Comparison_A549_knownRPB.pdf')  
+Intersect=data.frame(method=rep(c('RBP_quantitative','RBP_semi_quantitative','No binding'),each=4),count=c(quant_known,manual_known,none_known),matches_known=rep(c('no match','1 match','2 matches','3 matches'),3))
+Intersect$matches_known=factor(Intersect$matches_known,levels=c('no match','1 match','2 matches','3 matches'))
+Intersect$method=factor(Intersect$method,levels=c('RBP_quantitative','RBP_semi_quantitative','No binding'))
+A549_overview=ggplot(data=Intersect,aes(x=method,y=count,fill=matches_known))
+A549_overview+geom_bar(stat='identity',position='dodge')+xlab("Method") + ylab('Total count') +
+  ggtitle("Comparison between known RBPs and identified intreractomes in A549")
+dev.off()
+
+####Total number of the each set of identified interactomes
+pdf('count_A549_rbps.pdf')
+sets_count=data.frame(method=factor(c('RBP_quantitative','RBP_semi_quantitative','No binding'),labels=c('RBP_quantitative','RBP_semi_quantitative','No binding')),
+                      count=c(sum(A549_intensity$A549_quant=='interactome',na.rm=T),sum(A549_intensity$A549_manual=='interactome',na.rm=T),sum(A549_intensity$A549_total!='interactome',na.rm=T)))
+A549_sets_count=ggplot(data=sets_count,aes(x=method,y=count,fill=method))
+A549_sets_count+geom_bar(colour="black", stat="identity") + guides(fill=FALSE)+ xlab("Method") + ylab("Total counts") +
+  ggtitle("Counts of sets of identified proteins in A549")
+dev.off()
+
+###Write the set of Gene names of the RBPs to a txt file.
+save_file=A549_intensity[,c(13:15,21:23)]
+save_file[,4][is.na(save_file[,4])]='not qualified'
+sink('classified_rbps_A549.txt')
+cat('Gene names of quantitatively identified RBPs in A549')
+cat('\n'); cat('\n')
+cat(t(save_file[,2][save_file[,4]=='interactome']))
+cat('\n'); cat('\n')
+cat('Gene names of semi-quantitatively identified RBPs in A549')
+cat('\n'); cat('\n')
+cat(t(save_file[,2][save_file[,5]=='interactome']))
+cat('\n'); cat('\n')
+cat('Gene names of proteins ONLY quantitatively identified in A549')
+cat('\n'); cat('\n')
+cat(t(A549_intensity$gene_names[known_interactome==0 & save_file$A549_quant=='interactome']))
+cat('\n'); cat('\n')
+cat('Gene names of proteins ONLY semi-quantitatively identified in A549')
+cat('\n'); cat('\n')
+cat(t(A549_intensity$gene_names[known_interactome==0 & save_file$A549_manual=='interactome']))
+sink()
