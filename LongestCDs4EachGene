@@ -1,0 +1,70 @@
+library(GenomicFeatures)
+library(BSgenome.Hsapiens.UCSC.hg19)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(Biostrings) ## dna to rna
+library(biomaRt)
+ensembl = useMart("ensembl", dataset=
+                      "hsapiens_gene_ensembl")
+attributes = listAttributes(ensembl)
+head(attributes)
+head(attributes,500)
+attributes$description[grep('CDS', attributes$description)]
+
+
+gb <- getBM(attributes=c("ensembl_gene_id","ensembl_transcript_id","transcript_start","transcript_end","cds_start","cds_end","strand","chromosome_name","gene_biotype"), mart=ensembl)
+gb=gb[!is.na(gb$cds_start),]
+gb=gb[!is.na(gb$cds_end),]
+
+#### Ordering the transcrips by their total cds length, because the longest transcript doesn't mean the longest cds
+gb=gb[order(gb$ensembl_transcript_id),]
+gb$total_cds=gb$cds_sum_end-gb$cds_sum_start
+
+gb$cds_sum_start= rep(aggregate(gb$cds_start, by=list(gb$ensembl_transcript_id), sum)[,2], rle(gb$ensembl_transcript_id)$length)
+gb$cds_sum_end= rep(aggregate(gb$cds_end, by=list(gb$ensembl_transcript_id), sum)[,2], rle(gb$ensembl_transcript_id)$length)
+gb$total_cds=gb$cds_sum_end-gb$cds_sum_start
+
+gb=gb[order(gb$ensembl_gene_id, gb$total_cds, decreasing = TRUE),]
+longest_cds=data.frame(gb$ensembl_gene_id, gb$total_cds)
+longest_cds=longest_cds[!duplicated(longest_cds$gb.ensembl_gene_id),]
+gb$longest_cds=rep(longest_cds$gb.total_cds, rle(gb$ensembl_gene_id)$length)
+
+
+gb$longest_cds=NULL; gb$total_cds=NULL; gb$cds_sum_end=NULL; gb$cds_sum_start=NULL;
+gb=gb[gb$gene_biotype=='protein_coding',]
+
+####there are cased that different transcript of a gene have the same length of total cds, in this case it doesn't matter to keep which
+ensg_enst=data.frame(gb$ensembl_gene_id, gb$ensembl_transcript_id)
+ensg_enst=ensg_enst[!duplicated(ensg_enst$gb.ensembl_gene_id),]
+gb$ENST=rep(ensg_enst$gb.ensembl_transcript_id, rle(gb$ensembl_gene_id)$length)
+length(unique(gb$ensembl_gene_id))
+length(unique(gb$ensembl_transcript_id))
+gb$ENST=NULL
+
+saveRDS(gb,'inputdata/Longest_cds4gene.rds')
+gb=readRDS('inputdata/Longest_cds4gene.rds')
+head(gb, 50)
+gb$strand=ifelse(gb$strand==1, '+','-')
+gb=gb[nchar(gb$chromosome_name)<4,]
+gb$chromosome_name=paste0('chr',gb$chromosome_name)
+gb=gb[gb$chromosome_name != 'chrMT',]
+
+gb$cds_start=gb$cds_start+gb$transcript_start-1
+gb$cds_end=gb$cds_end+gb$transcript_start-1
+
+df=gb[,c(1,5,6,7,8)]
+df=df[1:100,]
+granges_gb=makeGRangesFromDataFrame(df,
+                         keep.extra.columns=TRUE,
+                         ignore.strand=FALSE,
+                         seqinfo=NULL,
+                         seqnames.field=c( "chromosome_name"),
+                         start.field="cds_start",
+                         end.field=c("cds_end"),
+                         strand.field="strand",
+                         starts.in.df.are.0based=FALSE)
+names(granges_gb)=granges_gb$ensembl_gene_id
+
+#######extract the CDS sequence based on coordinates
+seq <- getSeq(Hsapiens, granges_gb)
+codonUsage = trinucleotideFrequency(seq)
+
