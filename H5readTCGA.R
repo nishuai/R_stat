@@ -1,5 +1,6 @@
-
 ######Function to read h5 file given specification like cancer type, Gene names or patient ID
+######Author: Ni Shuai and Bernd Fischer (n.shuai[at]dkfz.de)
+library(rhdf5)
 
 ##ExampleDB=H5readRNAseq(h5file = 'TCGA_RNAseq_raw_count_Feb-26-2016.h5',TumorType = 'BLCA')
 H5readRNAseq=function(h5file, TumorType, PatientID, Genename){
