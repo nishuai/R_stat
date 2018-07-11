@@ -1,3 +1,6 @@
+####Downlaod and super fast retrive of ALL TCGA RNAseq data in h5 format
+####Author: Ni Shuai and Bernd Fischer
+
 ######load packages
 library(rhdf5)
 required_lib=(c("HGNChelper", "RCurl", "httr", 
@@ -6,6 +9,7 @@ lapply(required_lib, require, character.only = TRUE)
 library(org.Hs.eg.db)
 source('Module_A.r')
 source('Module_B.r')
+
 #database_date='Feb-26-2016'
 ######traverseALLdirectories TCGA
 TraverseAllDirectories(
