@@ -1,0 +1,15 @@
+##Given a positive integer n, break it into the sum of at least two positive 
+##integers and maximize the product of those integers. Return the maximum product you can get.
+
+
+max_sum=function(i){
+    
+    if (i<=1) return(NA)
+    aa=c(1, 2, 4, 6)
+    names(aa)=c('2','3','4','5')
+    if (i<=5) return(aa[as.character(i)])
+    
+    return(ifelse(i%%3==0, 3^(i/3), ifelse(i%%3==1, 4*3^(i%/%3-1), 2*3^(i%/%3))))
+    
+}
+
